@@ -1,4 +1,4 @@
-package com.example.ticker.ui;
+package party.treesquaredcode.android.tickerview;
 
 import android.animation.Animator;
 import android.animation.ObjectAnimator;
