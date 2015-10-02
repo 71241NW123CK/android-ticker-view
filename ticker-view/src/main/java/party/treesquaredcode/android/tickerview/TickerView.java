@@ -1,4 +1,4 @@
-package party.treesquaredcode.android.tickerview;
+package com.example.ticker.ui;
 
 import android.animation.Animator;
 import android.animation.ObjectAnimator;
@@ -38,6 +38,7 @@ public class TickerView extends FrameLayout {
     private double scrollSpeedPixelsPerSecond = DEFAULT_SCROLL_SPEED_PIXELS_PER_SECOND;
     private int itemsPerCycle = DEFAULT_ITEMS_PER_CYCLE;
     private boolean wasAnimating;
+    private boolean canAnimate = true;
 
     public TickerView(Context context) {
         super(context);
@@ -135,12 +136,14 @@ public class TickerView extends FrameLayout {
         if (adapter != null && isAnimating) {
             pauseAnimation();
         }
+        canAnimate = false;
         super.onDetachedFromWindow();
     }
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        canAnimate = true;
         if (adapter != null && wasAnimating) {
             resumeAnimation();
         }
@@ -164,21 +167,39 @@ public class TickerView extends FrameLayout {
     }
 
     public void pauseAnimation() {
-        if (!isAnimating || objectAnimator == null) {
-            return;
+        if (canAnimate) {
+            if (!isAnimating) {
+                return;
+            }
+            if (objectAnimator != null) {
+                objectAnimator.cancel();
+                isAnimating = false;
+            }
+        } else {
+            wasAnimating = false;
         }
-        objectAnimator.cancel();
     }
 
     public void resumeAnimation() {
-        if (isAnimating) {
-            return;
+        if (canAnimate) {
+            if (isAnimating) {
+                return;
+            }
+            setupAnimationToLastItem();
+            isAnimating = true;
+        } else {
+            wasAnimating = true;
         }
-        setupAnimationToLastItem();
     }
 
     public void toggleAnimation() {
-        if (isAnimating) {
+        if (canAnimate) {
+            if (isAnimating) {
+                pauseAnimation();
+            } else {
+                resumeAnimation();
+            }
+        } else if (wasAnimating) {
             pauseAnimation();
         } else {
             resumeAnimation();
@@ -303,11 +324,11 @@ public class TickerView extends FrameLayout {
         }
     }
 
-    interface Adapter {
-        View spawnView(Context context);
+    interface Adapter<T extends View> {
+        T spawnView(Context context);
         int size();
-        void bindViewForItemAtIndex(View view, int index);
-        void unbindView(View view);
+        void bindViewForItemAtIndex(T view, int index);
+        void unbindView(T view);
     }
 
     public static abstract class LayoutResAdapter implements Adapter {
