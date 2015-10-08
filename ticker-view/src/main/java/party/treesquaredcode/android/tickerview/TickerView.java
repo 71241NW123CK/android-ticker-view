@@ -1,44 +1,50 @@
 package party.treesquaredcode.android.tickerview;
 
-import android.animation.Animator;
-import android.animation.ObjectAnimator;
+
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Rect;
+import android.text.TextPaint;
 import android.util.AttributeSet;
-import android.view.LayoutInflater;
+import android.util.Log;
+import android.view.MotionEvent;
+import android.view.SoundEffectConstants;
 import android.view.View;
-import android.view.ViewGroup;
-import android.view.animation.LinearInterpolator;
-import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /**
  * A horizontally scrolling news ticker style view.
  * Created by Ryan Hiroaki Tsukamoto 1st October 2015
  */
-public class TickerView extends FrameLayout {
-    private static final double DEFAULT_SCROLL_SPEED_PIXELS_PER_SECOND = 64;
-    private static final int DEFAULT_ITEMS_PER_CYCLE = 4;
+public class TickerView extends View {
+    private static final String TAG = TickerView.class.getCanonicalName();
+
+    private List<Item> itemList = new ArrayList<>();
+    private List<Item> itemRecycler = new ArrayList<>();
+    private float offsetX;
     private int nextItemIndex;
+    private long lastFrameTime;
+    private boolean hasLastFrameTime;
+    private boolean doesMarquee;
+    private boolean hasWidth;
+    private int width;
+    private int height;
+    private float rightX;
+    private float touchX;
+    private float touchY;
+    private boolean isTouched;
+
+    private TextPaint textPaint = new TextPaint();
+    private float speed;
+    private float spacing;
+    private int defaultTextColor = Color.argb(255, 0, 0, 0);
+    private int pressedTextColor = Color.argb(255, 64, 64, 64);
     private Adapter adapter;
-    private LinearLayout linearLayout;
-    private boolean isAnimating;
-    private ObjectAnimator objectAnimator;
-    private int previousLayoutWidth;
-    private int previousLayoutHeight;
-    private boolean canScroll;
-    private int lastItemViewLeftX;
-    private int lastItemViewRightX;
-    private int layoutWidth;
-    private List<View> itemViewPool = new ArrayList<>();
-    private List<View> linearLayoutChildren = new ArrayList<>();
-    private List<Integer> visibleItemWidthList = new ArrayList<>();
-    private double scrollSpeedPixelsPerSecond = DEFAULT_SCROLL_SPEED_PIXELS_PER_SECOND;
-    private int itemsPerCycle = DEFAULT_ITEMS_PER_CYCLE;
-    private boolean wasAnimating;
-    private boolean canAnimate = true;
+    private boolean isPaused = true;
 
     public TickerView(Context context) {
         super(context);
@@ -52,295 +58,305 @@ public class TickerView extends FrameLayout {
         super(context, attrs, defStyleAttr);
     }
 
-    public double getScrollSpeedPixelsPerSecond() {
-        return scrollSpeedPixelsPerSecond;
-    }
-
-    public void setScrollSpeedPixelsPerSecond(double scrollSpeedPixelsPerSecond) {
-        this.scrollSpeedPixelsPerSecond = scrollSpeedPixelsPerSecond;
-    }
-
-    public int getItemsPerCycle() {
-        return itemsPerCycle;
-    }
-
-    public void setItemsPerCycle(int itemsPerCycle) {
-        this.itemsPerCycle = itemsPerCycle;
-    }
-
-    @Override
-    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        final int widthMode = MeasureSpec.getMode(widthMeasureSpec);
-        if (widthMode == MeasureSpec.UNSPECIFIED) {
+    public void setSpeed(float speed) {
+        if (speed > 0) {
+            Log.d("TickerView", "positive speed not supported.");
             return;
         }
-        if (getChildCount() > 0) {
-            final View child = getChildAt(0);
-            int width = getMeasuredWidth();
-            if (child.getMeasuredWidth() < width) {
-                final LayoutParams layoutParams = (LayoutParams) child.getLayoutParams();
-                int childHeightMeasureSpec = getChildMeasureSpec(heightMeasureSpec, 0, layoutParams.height);
-                int childWidthMeasureSpec = MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY);
-                child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
-            }
+        this.speed = speed;
+    }
+
+    public void setSpeedDp(float speedDp) {
+        setSpeed(floatPixelsForDp(speedDp));
+    }
+
+    public void setSpeedDimensionResource(int speedDimenResId) {
+        setSpeed(getContext().getResources().getDimension(speedDimenResId));
+    }
+
+    public void setTextPaint(TextPaint textPaint) {
+        if (adapter != null) {
+            Log.d(TAG, "Setting textPaint while adapter is attached is not supported.");
         }
+        this.textPaint = textPaint;
     }
 
-    @Override
-    protected void measureChild(View child, int parentWidthMeasureSpec, int parentHeightMeasureSpec) {
-        ViewGroup.LayoutParams layoutParams = child.getLayoutParams();
-        int childWidthMeasureSpec;
-        int childHeightMeasureSpec;
-        childHeightMeasureSpec = getChildMeasureSpec(parentHeightMeasureSpec, 0, layoutParams.height);
-        childWidthMeasureSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
-        child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
+    public void setTextSize(float textSize) {
+        if (adapter != null) {
+            Log.d(TAG, "Setting text size while adapter is attached is not supported.");
+        }
+        textPaint.setTextSize(textSize);
     }
 
-    @Override
-    protected void measureChildWithMargins(View child, int parentWidthMeasureSpec, int widthUsed, int parentHeightMeasureSpec, int heightUsed) {
-        final MarginLayoutParams layoutParams = (MarginLayoutParams) child.getLayoutParams();
-        final int childHeightMeasureSpec = getChildMeasureSpec(parentHeightMeasureSpec, layoutParams.topMargin + layoutParams.bottomMargin + heightUsed, layoutParams.height);
-        final int childWidthMeasureSpec = MeasureSpec.makeMeasureSpec(layoutParams.leftMargin + layoutParams.rightMargin, MeasureSpec.UNSPECIFIED);
-        child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
+    public void setTextSizeDimensionResource(int textSizeDimenResId) {
+        setTextSize(getContext().getResources().getDimension(textSizeDimenResId));
     }
 
-    @Override
-    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-        super.onLayout(changed, left, top, right, bottom);
-        if (!changed) {
+    public void setTextSizeDp(float textSizeDp) {
+        setTextSize(floatPixelsForDp(textSizeDp));
+    }
+
+    public void setSpacing(float spacing) {
+        if (adapter != null) {
+            Log.d(TAG, "Setting spacing while adapter is attached is not supported.");
             return;
         }
-        int newLayoutWidth = right - left;
-        int newLayoutHeight = bottom - top;
-        if (newLayoutWidth == previousLayoutWidth && newLayoutHeight == previousLayoutHeight) {
-            return;
-        }
-        layoutWidth = newLayoutWidth;
-        if (linearLayout == null) {
-            linearLayout = new LinearLayout(getContext());
-        } else {
-            removeLinearLayoutChildren();
-        }
-        removeAllViews();
-        LayoutParams layoutParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        addView(linearLayout, layoutParams);
-        fillLinearLayout();
-        previousLayoutWidth = newLayoutWidth;
-        previousLayoutHeight = newLayoutHeight;
+        this.spacing = spacing;
     }
 
-    @Override
-    protected void onDetachedFromWindow() {
-        wasAnimating = isAnimating;
-        if (adapter != null && isAnimating) {
-            pauseAnimation();
-        }
-        canAnimate = false;
-        super.onDetachedFromWindow();
+    public void setSpacingDp(float spacingDp) {
+        setSpacing(floatPixelsForDp(spacingDp));
     }
 
-    @Override
-    protected void onAttachedToWindow() {
-        super.onAttachedToWindow();
-        canAnimate = true;
-        if (adapter != null && wasAnimating) {
-            resumeAnimation();
-        }
+    public void setSpacingDimensionResource(int spacingDimenResId) {
+        setSpacing(getContext().getResources().getDimension(spacingDimenResId));
+    }
+
+    public void setDefaultTextColor(int defaultTextColor) {
+        this.defaultTextColor = defaultTextColor;
+    }
+
+    public void setDefaultTextColorResource(int defaultTextColorResId) {
+        setDefaultTextColor(getContext().getResources().getColor(defaultTextColorResId));
+    }
+
+    public void setPressedTextColor(int pressedTextColor) {
+        this.pressedTextColor = pressedTextColor;
+    }
+
+    public void setPressedTextColorResource(int pressedTextColorResId) {
+        setPressedTextColor(getContext().getResources().getColor(pressedTextColorResId));
     }
 
     public void setAdapter(Adapter adapter) {
-        if (this.adapter == adapter) {
-            return;
-        }
-        if (this.adapter != null) {
-            detachAdapter();
-            if (adapter == null) {
-                return;
+        if (adapter == null) {
+            doesMarquee = false;
+        } else if (adapter != this.adapter) {
+            if (hasWidth) {
+                reset();
             }
         }
         this.adapter = adapter;
-        if (linearLayout == null) {
+    }
+
+    public void pause() {
+        if (isPaused) {
             return;
         }
-        fillLinearLayout();
+        isPaused = !isPaused;
     }
 
-    public void pauseAnimation() {
-        if (canAnimate) {
-            if (!isAnimating) {
-                return;
-            }
-            if (objectAnimator != null) {
-                objectAnimator.cancel();
-                isAnimating = false;
-            }
+    public void resume() {
+        if (!isPaused) {
+            return;
+        }
+        hasLastFrameTime = false;
+        isPaused = !isPaused;
+    }
+
+    public void toggle() {
+        if (isPaused) {
+            resume();
         } else {
-            wasAnimating = false;
+            pause();
         }
     }
 
-    public void resumeAnimation() {
-        if (canAnimate) {
-            if (isAnimating) {
-                return;
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        height = h;
+        if (w != oldw) {
+            width = w;
+            hasWidth = true;
+            if (adapter != null) {
+                reset();
             }
-            setupAnimationToLastItem();
-            isAnimating = true;
-        } else {
-            wasAnimating = true;
+        }
+        super.onSizeChanged(w, h, oldw, oldh);
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        if (isReady()) {
+            if (doesMarquee && !isPaused) {
+                long t = new Date().getTime();
+                if (!hasLastFrameTime) {
+                    lastFrameTime = t;
+                    hasLastFrameTime = true;
+                }
+                long dt = t - lastFrameTime;
+                float dx = speed * dt / 1000.0f;
+                offsetX += dx;
+                rightX += dx;
+                lastFrameTime = t;
+                stripLeft();
+                fillRight();
+            }
+
+            float x = offsetX + 0.5f * spacing;
+            float y = (getMeasuredHeight() - (textPaint.ascent() + textPaint.descent())) / 2;
+            for (Item item : itemList) {
+                textPaint.setColor((isTouched && x < touchX && touchX <= x + item.width && 0 <= touchX && touchX <= width && 0 <= touchY && touchY <= height) ? pressedTextColor : defaultTextColor);
+                canvas.drawText(item.text, x, y, textPaint);
+                x += item.width;
+            }
+        }
+        super.onDraw(canvas);
+        if (doesMarquee) {
+            invalidate();
         }
     }
 
-    public void toggleAnimation() {
-        if (canAnimate) {
-            if (isAnimating) {
-                pauseAnimation();
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (!isReady()) {
+            return super.onTouchEvent(event);
+        }
+        int action = event.getAction();
+        float x = event.getX();
+        float y = event.getY();
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                if (isTouched) {
+                    return false;
+                } else {
+                    isTouched = true;
+                }
+                touchX = x;
+                touchY = y;
+                break;
+            case MotionEvent.ACTION_MOVE:
+                touchX = x;
+                touchY = y;
+                break;
+            case MotionEvent.ACTION_UP:
+                if (0 <= x && x <= width && 0 <= y && y <= height) {
+                    if (itemList.size() > 0) {
+                        int index;
+                        if ((index = getIndexFromTouchX(x)) != -1) {
+                            playSoundEffect(SoundEffectConstants.CLICK);
+                            adapter.onItemSelectedWithIndex(index);
+                        }
+                    }
+                }
+                isTouched = false;
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                isTouched = false;
+        }
+        return action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
+    }
+
+    private int getIndexFromTouchX(float touchX) {
+        float x0;
+        float x1 = offsetX;
+        for (Item item : itemList) {
+            x0 = x1;
+            x1 += item.width;
+            if (x0 < touchX && touchX <= x1) {
+                return item.index;
+            }
+        }
+        return -1;
+    }
+
+    public void reset() {
+        if (!isReady()) {
+            Log.d(TAG, "Cannot reset without width and adapter.");
+            return;
+        }
+        itemList.clear();
+        offsetX = 0f;
+        nextItemIndex = 0;
+        rightX = 0;
+        hasLastFrameTime = false;
+        doesMarquee = computeDoesMarquee();
+        fillRight();
+    }
+
+    private boolean computeDoesMarquee() {
+        if (!isReady()) {
+            Log.d(TAG, "Cannot compute does marquee without width and adapter.");
+            return false;
+        }
+        float filledWidth = 0f;
+        Rect rect = new Rect();
+        String s;
+        for (int i = 0; i < adapter.getItemCount(); i++) {
+            s = adapter.getStringAtIndex(i);
+            textPaint.getTextBounds(s, 0, s.length(), rect);
+            filledWidth += spacing + rect.width();
+            if (filledWidth > width) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void stripLeft() {
+        float itemRightX = offsetX;
+        float w;
+        boolean b = itemRightX < 0f;
+        while (b && itemList.size() > 0) {
+            itemRightX += w = itemList.get(0).width;
+            if (b = itemRightX < 0f) {
+                offsetX += w;
+                itemRecycler.add(itemList.remove(0));
+            }
+        }
+    }
+
+    private void fillRight() {
+        if (!isReady()) {
+            Log.d(TAG, "Cannot fill right without width and adapter.");
+        }
+        Rect rect = new Rect();
+        String s;
+        float w;
+        Item item;
+        while (rightX + offsetX < width) {
+            s = adapter.getStringAtIndex(nextItemIndex);
+            textPaint.getTextBounds(s, 0, s.length(), rect);
+            rightX += w = rect.width() + spacing;
+            if (!itemRecycler.isEmpty()) {
+                item = itemRecycler.remove(0);
+                item.text = s;
+                item.width = w;
+                item.index = nextItemIndex;
             } else {
-                resumeAnimation();
+                item = new Item(s, w, nextItemIndex);
             }
-        } else if (wasAnimating) {
-            pauseAnimation();
-        } else {
-            resumeAnimation();
-        }
-    }
-
-    private void detachAdapter() {
-        if (adapter == null) {
-            return;
-        }
-        removeLinearLayoutChildren();
-        adapter = null;
-    }
-
-    private void removeLinearLayoutChildren() {
-        if (objectAnimator != null) {
-            objectAnimator.cancel();
-        }
-        for (View view : linearLayoutChildren) {
-            adapter.unbindView(view);
-        }
-        linearLayout.removeAllViews();
-        nextItemIndex = 0;
-        isAnimating = false;
-        canScroll = false;
-        lastItemViewLeftX = 0;
-        lastItemViewRightX = 0;
-        itemViewPool.clear();
-        linearLayoutChildren.clear();
-        visibleItemWidthList.clear();
-        linearLayout.setTranslationX(0f);
-    }
-
-    private void fillLinearLayout() {
-        canScroll = false;
-        lastItemViewRightX = 0;
-        nextItemIndex = 0;
-        if (adapter == null) {
-            return;
-        }
-        while (!(enqueueItemView() || (canScroll = layoutWidth < lastItemViewRightX))){}
-        if (canScroll) {
-            enqueueItemView();
-            setupAnimationToLastItem();
-        }
-    }
-
-    private boolean enqueueItemView() {
-        View view;
-        if (itemViewPool.size() == 0) {
-            view = adapter.spawnView(getContext());
-        } else {
-            view = itemViewPool.remove(0);
-        }
-        adapter.bindViewForItemAtIndex(view, nextItemIndex);
-        linearLayout.addView(view);
-        linearLayout.measure(0, 0);
-        lastItemViewLeftX = lastItemViewRightX;
-        lastItemViewRightX = linearLayout.getMeasuredWidth();
-        visibleItemWidthList.add(lastItemViewRightX - lastItemViewLeftX);
-        nextItemIndex += 1;
-        nextItemIndex %= adapter.size();
-        return nextItemIndex == 0;
-    }
-
-    private void setupAnimationToLastItem() {
-        float currentTranslationX = linearLayout.getTranslationX();
-        float targetTranslationX = layoutWidth - lastItemViewLeftX;
-        float dX = currentTranslationX - targetTranslationX;
-        double dT = dX / getScrollSpeedPixelsPerSecond();
-        objectAnimator = ObjectAnimator.ofFloat(linearLayout, "translationX", currentTranslationX, targetTranslationX);
-        objectAnimator.setInterpolator(new LinearInterpolator());
-        objectAnimator.setDuration((long) (dT * 1000.0));
-        objectAnimator.addListener(new Animator.AnimatorListener() {
-            boolean wasCancelled = false;
-
-            @Override
-            public void onAnimationStart(Animator animation) {
-
+            itemList.add(item);
+            nextItemIndex = ++nextItemIndex % adapter.getItemCount();
+            if (nextItemIndex == 0 && !doesMarquee) {
+                return;
             }
-
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                if (wasCancelled) {
-                    return;
-                }
-                removeExpiredItemViews();
-                int itemsPerCycle = getItemsPerCycle();
-                for (int i = 0; i < itemsPerCycle; i++) {
-                    enqueueItemView();
-                }
-                setupAnimationToLastItem();
-            }
-
-            @Override
-            public void onAnimationCancel(Animator animation) {
-                wasCancelled = true;
-                isAnimating = false;
-            }
-
-            @Override
-            public void onAnimationRepeat(Animator animation) {
-
-            }
-        });
-        objectAnimator.start();
-        isAnimating = true;
-    }
-
-    private void removeExpiredItemViews() {
-        float x;
-        int w;
-        while (visibleItemWidthList.size() > 0 && (w = visibleItemWidthList.get(0)) < (x = -linearLayout.getTranslationX())) {
-            linearLayout.setTranslationX(w - x);
-            View view  = linearLayout.getChildAt(0);
-            adapter.unbindView(view);
-            itemViewPool.add(linearLayout.getChildAt(0));
-            linearLayout.removeViewAt(0);
-            visibleItemWidthList.remove(0);
-            lastItemViewLeftX -= w;
-            lastItemViewRightX -= w;
         }
     }
 
-    interface Adapter<T extends View> {
-        T spawnView(Context context);
-        int size();
-        void bindViewForItemAtIndex(T view, int index);
-        void unbindView(T view);
+    private boolean isReady() {
+        return hasWidth && adapter != null;
     }
 
-    public static abstract class LayoutResAdapter implements Adapter {
-        int layoutResId;
+    private class Item {
+        String text;
+        float width;
+        int index;
 
-        public LayoutResAdapter(int layoutResId) {
-            this.layoutResId = layoutResId;
+        public Item(String text, float width, int index) {
+            this.text = text;
+            this.width = width;
+            this.index = index;
         }
+    }
 
-        @Override
-        public View spawnView(Context context) {
-            return LayoutInflater.from(context).inflate(layoutResId, null);
-        }
+    private float floatPixelsForDp(float dp) {
+        return getContext().getResources().getDisplayMetrics().density * dp + 0.5f;
+    }
+
+    public interface Adapter {
+        int getItemCount();
+        String getStringAtIndex(int i);
+        void onItemSelectedWithIndex(int i);
     }
 }
