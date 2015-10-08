@@ -164,6 +164,7 @@ public class TickerView extends View {
         }
         hasLastFrameTime = false;
         isPaused = !isPaused;
+        invalidate();
     }
 
     public void toggle() {
