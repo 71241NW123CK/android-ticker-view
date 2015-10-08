@@ -138,12 +138,17 @@ public class TickerView extends View {
     public void setAdapter(Adapter adapter) {
         if (adapter == null) {
             doesMarquee = false;
+            itemList.clear();
         } else if (adapter != this.adapter) {
+            if (this.adapter != null) {
+                this.adapter.setTickerView(null);
+            }
+            this.adapter = adapter;
+            this.adapter.setTickerView(this);
             if (hasWidth) {
                 reset();
             }
         }
-        this.adapter = adapter;
     }
 
     public void pause() {
@@ -361,9 +366,20 @@ public class TickerView extends View {
         return getContext().getResources().getDisplayMetrics().density * dp + 0.5f;
     }
 
-    public interface Adapter {
-        int getItemCount();
-        String getStringAtIndex(int i);
-        void onItemSelectedWithIndex(int i);
+    public static abstract class Adapter {
+        TickerView tickerView;
+        public abstract int getItemCount();
+        public abstract String getStringAtIndex(int i);
+        protected abstract void onItemSelectedWithIndex(int i);
+
+        private void setTickerView(TickerView tickerView) {
+            this.tickerView = tickerView;
+        }
+
+        public final void notifyDataSetChanged() {
+            if (tickerView != null) {
+                tickerView.reset();
+            }
+        }
     }
 }
