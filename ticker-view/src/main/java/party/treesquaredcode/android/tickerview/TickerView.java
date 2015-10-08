@@ -285,6 +285,7 @@ public class TickerView extends View {
         hasLastFrameTime = false;
         doesMarquee = computeDoesMarquee();
         fillRight();
+        invalidate();
     }
 
     private boolean computeDoesMarquee() {
