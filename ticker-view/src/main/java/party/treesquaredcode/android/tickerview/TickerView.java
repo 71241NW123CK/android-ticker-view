@@ -1,10 +1,10 @@
 package party.treesquaredcode.android.tickerview;
 
-
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Rect;
+import android.graphics.Typeface;
 import android.text.TextPaint;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -94,6 +94,13 @@ public class TickerView extends View {
 
     public void setTextSizeDp(float textSizeDp) {
         setTextSize(floatPixelsForDp(textSizeDp));
+    }
+
+    public void setTypeface(Typeface typeface) {
+        if (adapter != null) {
+            Log.d(TAG, "Setting typeface while adapter is attached is not supported.");
+        }
+        textPaint.setTypeface(typeface);
     }
 
     public void setSpacing(float spacing) {
