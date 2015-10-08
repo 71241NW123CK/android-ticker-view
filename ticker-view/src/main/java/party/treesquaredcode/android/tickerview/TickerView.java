@@ -322,6 +322,9 @@ public class TickerView extends View {
         if (!isReady()) {
             Log.d(TAG, "Cannot fill right without width and adapter.");
         }
+        if (adapter.getItemCount() <= 0) {
+            return;
+        }
         Rect rect = new Rect();
         String s;
         float w;
