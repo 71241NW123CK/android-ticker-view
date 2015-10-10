@@ -7,7 +7,7 @@ def gitHubRepoUri = "git@github.com:71241NW123CK/maven-repo"
 def mavenGroup = 'party.treesquaredcode.android'
 group = mavenGroup
 def name = 'ticker-view'
-version = '0.0.6'
+version = '0.0.7'
 def projectDirectory = new File('')
 projectDirectory = projectDirectory.getAbsoluteFile()
 def projectParentDirectory = projectDirectory.getParentFile()
@@ -27,7 +27,7 @@ android {
 	compileSdkVersion 23
 	buildToolsVersion '23.0.1'
 	defaultConfig {
-		minSdkVersion 15
+		minSdkVersion 16
 		targetSdkVersion 23
 		versionCode 1
 		versionName '1.0'

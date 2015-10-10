@@ -45,6 +45,7 @@ public class TickerView extends View {
     private int pressedTextColor = Color.argb(255, 64, 64, 64);
     private Adapter adapter;
     private boolean isPaused = true;
+    private Runnable animationRunnable = provideAnimationRunnable();
 
     public TickerView(Context context) {
         super(context);
@@ -60,7 +61,7 @@ public class TickerView extends View {
 
     public void setSpeed(float speed) {
         if (speed > 0) {
-            Log.d("TickerView", "positive speed not supported.");
+            Log.d(TAG, "positive speed not supported.");
             return;
         }
         this.speed = speed;
@@ -164,7 +165,7 @@ public class TickerView extends View {
         }
         hasLastFrameTime = false;
         isPaused = !isPaused;
-        invalidate();
+        setupAnimation();
     }
 
     public void toggle() {
@@ -191,21 +192,6 @@ public class TickerView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         if (isReady()) {
-            if (doesMarquee && !isPaused) {
-                long t = new Date().getTime();
-                if (!hasLastFrameTime) {
-                    lastFrameTime = t;
-                    hasLastFrameTime = true;
-                }
-                long dt = t - lastFrameTime;
-                float dx = speed * dt / 1000.0f;
-                offsetX += dx;
-                rightX += dx;
-                lastFrameTime = t;
-                stripLeft();
-                fillRight();
-            }
-
             float x = offsetX + 0.5f * spacing;
             float y = (getMeasuredHeight() - (textPaint.ascent() + textPaint.descent())) / 2;
             for (Item item : itemList) {
@@ -215,9 +201,6 @@ public class TickerView extends View {
             }
         }
         super.onDraw(canvas);
-        if (doesMarquee) {
-            invalidate();
-        }
     }
 
     @Override
@@ -285,6 +268,9 @@ public class TickerView extends View {
         hasLastFrameTime = false;
         doesMarquee = computeDoesMarquee();
         fillRight();
+        if (!isPaused) {
+            setupAnimation();
+        }
         invalidate();
     }
 
@@ -355,6 +341,10 @@ public class TickerView extends View {
         return hasWidth && adapter != null;
     }
 
+    private void setupAnimation() {
+        postOnAnimation(animationRunnable);
+    }
+
     private class Item {
         String text;
         float width;
@@ -386,5 +376,33 @@ public class TickerView extends View {
                 tickerView.reset();
             }
         }
+    }
+
+    private Runnable provideAnimationRunnable() {
+        return new Runnable() {
+            @Override
+            public void run() {
+                if (isReady() && !isPaused) {
+                    doAnimation();
+                    invalidate();
+                    setupAnimation();
+                }
+            }
+        };
+    }
+
+    private void doAnimation() {
+        long t = new Date().getTime();
+        if (!hasLastFrameTime) {
+            lastFrameTime = t;
+            hasLastFrameTime = true;
+        }
+        long dt = t - lastFrameTime;
+        float dx = speed * dt / 1000.0f;
+        offsetX += dx;
+        rightX += dx;
+        lastFrameTime = t;
+        stripLeft();
+        fillRight();
     }
 }
